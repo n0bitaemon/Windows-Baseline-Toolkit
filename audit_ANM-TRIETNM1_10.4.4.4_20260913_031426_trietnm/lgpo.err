@@ -1,0 +1,10 @@
+
+LGPO.exe - Local Group Policy Object Utility
+Version 3.0.2004.13001
+Copyright (C) 2015-2020 Microsoft Corporation
+Security Compliance Toolkit - https://www.microsoft.com/download/details.aspx?id=55319
+
+Apply settings from PolicyRules file: C:\Users\Admin\OneDrive\Documents\Tasks\AUDIT\windows_baseline_toolkit\policy_rules\Windows11-24H2-FINAL.PolicyRules
+Audit policy directory exists
+Copied C:\Users\Admin\AppData\Local\Temp\Pol5E7C.tmp
+to C:\WINDOWS\system32\GroupPolicy\Machine\Microsoft\Windows NT\Audit\audit.csv
