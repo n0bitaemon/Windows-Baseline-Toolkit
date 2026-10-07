@@ -1,0 +1,49 @@
+; ----------------------------------------------------------------------
+; Delta cho goi: Windows Server-2022-Security-Baseline-FINAL
+; (ap cho moi mode cua goi: server-member, server-nondomain, server-dc)
+; LGPO text -> ap bang LGPO /t sau cac GPO cua Microsoft.
+; ----------------------------------------------------------------------
+
+; [WS22-01] Tang kich thuoc event log (KB). Baseline: 32768 / 196608 / 32768
+Computer
+Software\Policies\Microsoft\Windows\EventLog\Application
+MaxSize
+DWORD:102400
+
+Computer
+Software\Policies\Microsoft\Windows\EventLog\Security
+MaxSize
+DWORD:3145728
+
+Computer
+Software\Policies\Microsoft\Windows\EventLog\System
+MaxSize
+DWORD:1572864
+
+; [WS22-02] Firewall: Inbound connections = Allow (Domain / Private / Public)
+; DefaultInboundAction: 1 = Block (baseline), 0 = Allow
+Computer
+Software\Policies\Microsoft\WindowsFirewall\DomainProfile
+DefaultInboundAction
+DWORD:0
+
+Computer
+Software\Policies\Microsoft\WindowsFirewall\PrivateProfile
+DefaultInboundAction
+DWORD:0
+
+Computer
+Software\Policies\Microsoft\WindowsFirewall\PublicProfile
+DefaultInboundAction
+DWORD:0
+
+; [WS22-03] Firewall Domain/Private profile: Apply local firewall rules = No (baseline khong cau hinh)
+Computer
+Software\Policies\Microsoft\WindowsFirewall\DomainProfile
+AllowLocalPolicyMerge
+DWORD:0
+
+Computer
+Software\Policies\Microsoft\WindowsFirewall\PrivateProfile
+AllowLocalPolicyMerge
+DWORD:0

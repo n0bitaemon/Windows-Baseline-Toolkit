@@ -1,4 +1,17 @@
-PolicyAnalyzer/Policy Rules/EffectiveState_*
-policy_rules/EffectiveState_*
+# Bo qua moi thu o thu muc goc...
+/*
+
+# ...tru cac muc sau
+!/.gitignore
+!/ApplyBaselinev2.ps1
+!/List-BaselineGPOs.ps1
+!/README.md
+!/baseline_template/
+!/deltas/
+!/LGPO/
+!/PolicyAnalyzer/
+!/SetObjectSecurity/
+
+# Rac trong cac thu muc duoc giu
 EffectiveState_*
-audit_*/
+.DS_Store

@@ -6,6 +6,15 @@ Công cụ audit security baseline cho máy Windows. Script thực hiện:
 2. Kiểm tra các công cụ bảo mật bắt buộc có được cài và cấu hình đúng không: **MDE, Wazuh agent, Sysmon, ghi log lệnh/PowerShell**.
 3. (Tùy chọn) tự động áp baseline bảo mật (GPO mẫu) vào máy bằng LGPO.
 
+Có 2 phiên bản script:
+
+| Script | Baseline lấy từ đâu |
+|---|---|
+| `ApplyBaselinev2.ps1` (**khuyến nghị**) | Tự đọc gói Microsoft Security Baseline trong `baseline_template\` và tự nhận các mode (client domain-joined / non-domain, server member / non-domain / DC). Cấu hình riêng của tổ chức đặt trong `deltas\`. **Không** cần dựng sẵn file `.PolicyRules` cho từng role. |
+| `Apply-Baseline.ps1` (cũ) | Chọn một file `.PolicyRules` dựng sẵn trong `policy_rules\` |
+
+Hai script có cùng quy trình (lần đầu → tự sửa → `--recheck`) và cùng định dạng file kết quả. Phần dưới mô tả `Apply-Baseline.ps1`; các điểm khác của v2 nằm ở mục [ApplyBaselinev2.ps1](#applybaselinev2ps1).
+
 ## Quy trình audit đầy đủ
 
 Một lượt audit thường gồm 3 bước: **chạy lần đầu → tự sửa các lỗi tìm thấy → chạy lại để xác nhận (recheck)**.
@@ -75,6 +84,43 @@ Trong file `.txt`, mỗi dòng kiểm tra có 1 trong 4 trạng thái:
 - **SKIP** — không áp dụng hoặc không kiểm tra được
 
 Cuối file có phần **TỔNG KẾT** (`SUMMARY`) đếm số lượng từng loại và liệt kê lại toàn bộ mục `FAIL` để dễ tra cứu nhanh.
+
+## ApplyBaselinev2.ps1
+
+```powershell
+.\ApplyBaselinev2.ps1 -List          # xem gói / mode / GPO / delta mà script nhận ra (không thay đổi gì, không cần admin)
+.\ApplyBaselinev2.ps1                # audit lần đầu
+.\ApplyBaselinev2.ps1 --recheck      # xác nhận sau khi sửa
+# Chạy không cần menu:
+.\ApplyBaselinev2.ps1 -Baseline "Windows Server-2022-Security-Baseline" -Mode server-nondomain -Exclude 'Credential Guard'
+```
+
+**Chọn gói và mode.** Script quét `baseline_template\` và đọc tên GPO trong `Backup.xml`, từ đó suy ra mode theo quy ước đặt tên của Microsoft:
+
+| Mode | GPO được áp |
+|---|---|
+| `client-domain` / `client-nondomain` | Toàn bộ GPO của gói client |
+| `server-member` / `server-nondomain` | GPO server, **trừ** GPO có tên chứa `Domain Controller` |
+| `server-dc` | GPO server, **trừ** GPO có tên chứa `Member Server` |
+
+Kết quả trùng với `Baseline-LocalInstall.ps1` của Microsoft. Script tự **gợi ý** gói khớp với OS của máy và mode khớp với vai trò (`DomainRole`) của máy. Nếu bạn chọn khác gợi ý, script cảnh báo và hỏi xác nhận. Khi được hỏi, có thể bỏ bớt GPO bằng từ khoá (ví dụ `Credential Guard`, `BitLocker`). Với gói đặt tên khác thường, thêm file `baseline.psd1` vào thư mục gói để khai báo tay:
+
+```powershell
+@{ Modes = @{ 'server-member' = @('MSFT ... - Member Server', 'MSFT ... - Domain Security'); ... } }
+```
+
+**Delta.** Các cấu hình khác baseline đặt trong `deltas\` (xem [deltas/README.md](deltas/README.md)). Script áp chúng **sau** GPO của Microsoft. Với mode `*-nondomain`, script tự áp thêm `DeltaForNonDomainJoined` có sẵn trong gói Microsoft. Khi có baseline mới: chép gói vào `baseline_template\`, chạy `-List`, rồi audit như bình thường. Delta cũ được dùng tiếp.
+
+**Remediate.** Tương tự script của Microsoft: `LGPO /e …` (client side extensions) → `LGPO /g` từng GPO → các delta (`/t`, `/s`, `/a`) → `gpupdate /force`. Trên **domain controller** script không remediate (Microsoft cũng chặn việc này). DC cần được import GPO qua AD.
+
+**File kết quả thêm so với bản cũ** (chỉ tạo ở lần chạy đầu):
+
+| File | Ý nghĩa |
+|---|---|
+| `baseline_<BASE>.PolicyRules` | Baseline tham chiếu = GPO của mode đã chọn + delta, không có conflict. Mở cùng `pre_*` / `post_*` trong Policy Analyzer để so sánh |
+| `delta_report_<BASE>.txt` | Từng mục delta so với baseline: `OVERRIDE` / `REMOVE` / `NEW` / `REDUNDANT` / `INFO` / `ERROR` |
+
+Report `*_scriptcheck_*.txt` có thêm 2 dòng header là `Baseline` và `Mode`. Thư mục `policy_rules\` không còn cần cho v2.
 
 ## Lưu trữ
 

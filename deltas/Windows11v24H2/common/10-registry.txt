@@ -1,0 +1,50 @@
+; ----------------------------------------------------------------------
+; Delta cho goi: Windows 11 v24H2 Security Baseline (ca client-domain va client-nondomain)
+; LGPO text -> ap bang LGPO /t sau cac GPO cua Microsoft.
+; ----------------------------------------------------------------------
+
+; [W11-01] Tang kich thuoc event log (KB). Baseline: 32768 / 196608 / 32768
+Computer
+Software\Policies\Microsoft\Windows\EventLog\Application
+MaxSize
+DWORD:102400
+
+Computer
+Software\Policies\Microsoft\Windows\EventLog\Security
+MaxSize
+DWORD:1572864
+
+Computer
+Software\Policies\Microsoft\Windows\EventLog\System
+MaxSize
+DWORD:102400
+
+; [W11-02] Firewall Domain/Private profile: Apply local firewall rules = No
+; Luu y: rule inbound tao local (RDP, File Sharing, WinRM...) bi bo qua tren 2 profile nay.
+Computer
+Software\Policies\Microsoft\WindowsFirewall\DomainProfile
+AllowLocalPolicyMerge
+DWORD:0
+
+Computer
+Software\Policies\Microsoft\WindowsFirewall\PrivateProfile
+AllowLocalPolicyMerge
+DWORD:0
+
+; [W11-03] BitLocker: Deny write access to removable drives not protected by BitLocker = Disabled
+; Baseline: RDVDenyWriteAccess=1, RDVDenyCrossOrg=0
+Computer
+System\CurrentControlSet\Policies\Microsoft\FVE
+RDVDenyWriteAccess
+DWORD:0
+
+Computer
+SOFTWARE\Policies\Microsoft\FVE
+RDVDenyCrossOrg
+DELETE
+
+; [W11-04] Enhanced Phishing Protection: Notify Password Reuse = Disabled. Baseline: 1
+Computer
+Software\Policies\Microsoft\Windows\WTDS\Components
+NotifyPasswordReuse
+DWORD:0

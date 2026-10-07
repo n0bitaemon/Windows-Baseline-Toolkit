@@ -1,0 +1,19 @@
+; ----------------------------------------------------------------------
+; MAU - doi ten thanh 10-registry.txt (bo duoi .example) de script ap dung.
+; LGPO text: moi muc 4 dong lien tiep, ngan cach bang dong trong / comment.
+; Ghi LY DO cho tung muc ngay phia tren muc do.
+; ----------------------------------------------------------------------
+
+; [AUDIT-EXC-001] Cho phep RDP bang NLA tren may chu quan tri (vi du)
+; Ly do: <ticket / phe duyet>
+Computer
+Software\Policies\Microsoft\Windows NT\Terminal Services
+UserAuthentication
+DWORD:1
+
+; [AUDIT-EXC-002] Dua 1 setting cua baseline ve "Not configured" (vi du)
+; Ly do: <ticket / phe duyet>
+Computer
+Software\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging
+EnableScriptBlockInvocationLogging
+DELETE
