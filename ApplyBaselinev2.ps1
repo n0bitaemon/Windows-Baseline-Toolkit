@@ -1855,10 +1855,14 @@ if ($doRemediate) {
             Add-Content -LiteralPath $script:LgpoOut -Value @('', ('=' * 70), "[$Label]", ('LGPO.exe ' + ($Arguments -join ' ')), ('=' * 70))
             $so = Get-Content -LiteralPath $o -ErrorAction SilentlyContinue
             if ($so) { Add-Content -LiteralPath $script:LgpoOut -Value $so }
+            # LGPO luon ghi banner + dong tien trinh ra stderr ke ca khi thanh cong
+            # -> chi dua vao lgpo.err khi exit code khac 0, con lai gop vao lgpo.out
             $se = Get-Content -LiteralPath $e -ErrorAction SilentlyContinue
-            if ($se -or $code -ne 0) {
-                Add-Content -LiteralPath $script:LgpoErr -Value ("[{0}] exit code {1}" -f $Label, $code)
+            if ($code -ne 0) {
+                Add-Content -LiteralPath $script:LgpoErr -Value @('', ("[{0}] exit code {1}" -f $Label, $code))
                 if ($se) { Add-Content -LiteralPath $script:LgpoErr -Value $se }
+            } elseif ($se) {
+                Add-Content -LiteralPath $script:LgpoOut -Value $se
             }
         } finally {
             Remove-Item -LiteralPath $o, $e -Force -ErrorAction SilentlyContinue
