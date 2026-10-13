@@ -1,0 +1,11 @@
+; ----------------------------------------------------------------------
+; Delta cho goi: WindowsServer2022 - CHI mode server-member
+; LGPO text -> ap bang LGPO /t sau cac GPO cua Microsoft va sau deltas\WindowsServer2022\common.
+; ----------------------------------------------------------------------
+
+; [WS22-MS-01] Remote Desktop: Do not allow drive redirection -> Disabled (cho phep map o dia vao phien RDP)
+; Baseline (Member Server GPO): fDisableCdm = 1
+Computer
+Software\Policies\Microsoft\Windows NT\Terminal Services
+fDisableCdm
+DWORD:0
