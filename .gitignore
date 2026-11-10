@@ -4,6 +4,7 @@
 # ...tru cac muc sau
 !/.gitignore
 !/ApplyBaselinev2.ps1
+!/Export-GpoBackup.ps1
 !/List-BaselineGPOs.ps1
 !/README.md
 !/baseline_template/
