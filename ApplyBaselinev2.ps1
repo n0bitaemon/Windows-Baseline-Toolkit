@@ -56,22 +56,42 @@
         [2] CHECK    : script check security stack -> post_scriptcheck_<BASE>.txt
         Khong chay REMEDIATE. File cu bi GHI DE.
 
+      EXPORT (-Export) - CHI sinh baseline tham chieu tu GPO + delta. KHONG doc
+      va KHONG thay doi may dang chay:
+        exports\<goi>_<mode>.PolicyRules         baseline tham chieu
+        exports\<goi>_<mode>_delta_report.txt    bao cao tung muc delta
+        Khong hoi ma nhan vien / IP, khong tao folder audit_*, khong chup
+        snapshot, khong chay script check, khong remediate.
+        Khong can quyen Administrator va khong can LGPO.exe (chi can
+        GPO2PolicyRules.exe) -> xuat duoc baseline cho OS khac voi may dang
+        chay, vi du xuat server-dc tu mot may Windows 11.
+        Them -All de xuat MOI to hop goi x mode trong 1 lan chay.
+        Ten file KHONG co timestamp: chay lai se GHI DE, de de dang diff
+        giua cac lan chay. LUU Y: thu muc exports\ dang bi .gitignore bo qua;
+        them dong '!/exports/' vao .gitignore neu muon commit cac file nay.
+
     So sanh: mo Policy Analyzer -> Add baseline_*, pre_*, post_* -> View/Compare.
 
     Tham so:
         -Recheck (hoac --recheck)  chon folder audit_* co san, gen lai bo file post_*
         -List    (hoac --list)     chi liet ke goi / mode / GPO / delta, khong thay doi gi
+        -Export  (hoac --export)   chi xuat baseline tham chieu ra exports\, khong doi may
+        -All     (hoac --all)      dung voi -Export: xuat moi to hop goi x mode
+        -OutDir  <thu muc>         dung voi -Export: doi thu muc dich (mac dinh .\exports)
         -Baseline <ten thu muc>    chon goi baseline, bo qua menu
         -Mode <mode>               chon mode, bo qua menu
         -Exclude <tu khoa,...>     bo cac GPO co ten chua tu khoa (vd 'Credential Guard','BitLocker')
 
-    Yeu cau: chay bang quyen Administrator (tru -List).
+    Yeu cau: chay bang quyen Administrator (tru -List va -Export).
 #>
 
 [CmdletBinding()]
 param(
     [switch]$Recheck,
     [switch]$List,
+    [switch]$Export,
+    [switch]$All,
+    [string]$OutDir,
     [string]$Baseline,
     [ValidateSet('client-domain', 'client-nondomain', 'server-member', 'server-nondomain', 'server-dc')]
     [string]$Mode,
@@ -90,8 +110,11 @@ if ($ExtraArgs) {
         switch -Regex ($a) {
             '^--recheck$' { $Recheck = $true }
             '^--list$'    { $List = $true }
+            '^--export$'  { $Export = $true }
+            '^--all$'     { $All = $true }
             '^(--help|-h)$' {
                 Write-Host "Usage: .\ApplyBaselinev2.ps1 [-Recheck | --recheck] [-List | --list]"
+                Write-Host "                             [-Export | --export] [-All | --all] [-OutDir <folder>]"
                 Write-Host "                             [-Baseline <folder>] [-Mode <mode>] [-Exclude <kw>,<kw>]"
                 Write-Host ""
                 Write-Host "  (no flag)   First run: pick a baseline package + mode, create a new audit_<BASE>\"
@@ -102,6 +125,14 @@ if ($ExtraArgs) {
                 Write-Host "              Regenerates post_<BASE>.PolicyRules and post_scriptcheck_<BASE>.txt,"
                 Write-Host "              OVERWRITING them if present. The baseline is not applied."
                 Write-Host "  -List       Show detected baseline packages, modes, GPOs and delta files. No changes."
+                Write-Host "  -Export     EXPORT ONLY: build the reference baseline (GPOs + deltas) into"
+                Write-Host "              exports\<package>_<mode>.PolicyRules plus a _delta_report.txt."
+                Write-Host "              This machine is never read or changed: no audit_* folder, no snapshot,"
+                Write-Host "              no script check, no remediation. Needs neither Administrator nor"
+                Write-Host "              LGPO.exe, so you can export any OS/role from any machine."
+                Write-Host "              Re-running OVERWRITES the files (names carry no timestamp)."
+                Write-Host "  -All        With -Export: export every package x mode combination in one run."
+                Write-Host "  -OutDir     With -Export: destination folder (default .\exports)."
                 Write-Host "  -Baseline   Baseline package folder name under baseline_template\ (skips the menu)."
                 Write-Host "  -Mode       client-domain | client-nondomain | server-member | server-nondomain | server-dc"
                 Write-Host "  -Exclude    Skip GPOs whose name contains any of the keywords."
@@ -114,6 +145,26 @@ if ($ExtraArgs) {
             }
         }
     }
+}
+
+# --- To hop tham so khong hop le ---
+if ($Export -and $Recheck) {
+    Write-Host "[ERROR] -Export cannot be combined with -Recheck." -ForegroundColor Red
+    Write-Host "        -Export only builds a reference file; -Recheck inspects a machine." -ForegroundColor Red
+    exit 1
+}
+if ($Export -and $List) {
+    Write-Host "[ERROR] -Export cannot be combined with -List." -ForegroundColor Red
+    exit 1
+}
+if ($All -and -not $Export) {
+    Write-Host "[ERROR] -All is only valid together with -Export." -ForegroundColor Red
+    Write-Host "        Did you mean: .\ApplyBaselinev2.ps1 -Export -All" -ForegroundColor Red
+    exit 1
+}
+if ($OutDir -and -not $Export) {
+    Write-Host "[ERROR] -OutDir is only valid together with -Export." -ForegroundColor Red
+    exit 1
 }
 
 # ============================================================
@@ -956,6 +1007,49 @@ function New-ReferencePolicyRules {
 }
 
 # ============================================================
+# 5b. Ho tro -Export
+#     Ten file co dinh theo <goi>_<mode>, KHONG co timestamp: de so sanh
+#     giua cac lan chay va de dua vao git. Chay lai se ghi de.
+# ============================================================
+function Get-ExportDir {
+    if ($OutDir) {
+        if ([IO.Path]::IsPathRooted($OutDir)) { return $OutDir }
+        return (Join-Path $ScriptRoot $OutDir)
+    }
+    return (Join-Path $ScriptRoot 'exports')
+}
+
+function Write-ReferenceExport {
+    param(
+        [Parameter(Mandatory)]$Bl,
+        [Parameter(Mandatory)][string]$ModeKey,
+        $Gpos, $Deltas, [string[]]$ExcludedNames,
+        [Parameter(Mandatory)][string]$Dir
+    )
+    $base = '{0}_{1}' -f (Format-Token $Bl.Name), (Format-Token $ModeKey)
+    $out  = Join-Path $Dir ($base + '.PolicyRules')
+    $rep  = Join-Path $Dir ($base + '_delta_report.txt')
+    $ok   = New-ReferencePolicyRules -Bl $Bl -ModeKey $ModeKey -Gpos $Gpos -Deltas $Deltas `
+                -ExcludedNames $ExcludedNames -OutFile $out -ReportFile $rep
+    return [pscustomobject]@{ Ok = $ok; OutFile = $out; ReportFile = $rep }
+}
+
+# Ap -Exclude vao danh sach GPO cua 1 mode -> @{ Gpos; Excluded }
+function Split-GposByExclude {
+    param($Gpos, [string[]]$Keywords)
+    $excluded = @()
+    if ($Keywords) {
+        $excluded = @($Gpos |
+            Where-Object { $n = $_.Name; @($Keywords | Where-Object { $n -like "*$_*" }).Count -gt 0 } |
+            ForEach-Object { $_.Name })
+    }
+    return [pscustomobject]@{
+        Gpos     = @($Gpos | Where-Object { $excluded -notcontains $_.Name })
+        Excluded = $excluded
+    }
+}
+
+# ============================================================
 # 6. Che do -List: chi liet ke, khong can quyen admin
 # ============================================================
 $Machine   = Get-MachineInfo
@@ -995,13 +1089,18 @@ if ($List) {
 
 # ============================================================
 # 7. Kiem tra dieu kien tien quyet
+#    -Export chi doc file trong baseline_template\ + deltas\ roi ghi ra
+#    .PolicyRules -> khong can quyen Administrator va khong can LGPO.exe.
 # ============================================================
-if (-not (Test-IsAdmin)) {
+if (-not $Export -and -not (Test-IsAdmin)) {
     Write-Host "[ERROR] This script must be run as Administrator." -ForegroundColor Red
+    Write-Host "        (-List and -Export do not need Administrator.)" -ForegroundColor Red
     exit 1
 }
 
-foreach ($tool in @(@{P=$LgpoExe;N='LGPO.exe'}, @{P=$Gpo2RulesExe;N='GPO2PolicyRules.exe'})) {
+$RequiredTools = @(@{P=$Gpo2RulesExe;N='GPO2PolicyRules.exe'})
+if (-not $Export) { $RequiredTools = @(@{P=$LgpoExe;N='LGPO.exe'}) + $RequiredTools }
+foreach ($tool in $RequiredTools) {
     if (-not (Test-Path $tool.P)) {
         Write-Host "[ERROR] $($tool.N) not found at: $($tool.P)" -ForegroundColor Red
         if ($tool.N -eq 'GPO2PolicyRules.exe') {
@@ -1009,6 +1108,93 @@ foreach ($tool in @(@{P=$LgpoExe;N='LGPO.exe'}, @{P=$Gpo2RulesExe;N='GPO2PolicyR
         }
         exit 1
     }
+}
+
+# ============================================================
+# 7b. -Export -All: xuat MOI to hop goi x mode, khong hoi gi.
+#     Co the loc bot bang -Baseline va/hoac -Mode.
+# ============================================================
+if ($Export -and $All) {
+    foreach ($bl in @($Baselines | Where-Object { $_.Error })) {
+        Write-Host "[WARNING] Skipping package '$($bl.Name)': $($bl.Error)" -ForegroundColor Yellow
+    }
+    $validBl = @($Baselines | Where-Object { -not $_.Error })
+    if ($validBl.Count -eq 0) {
+        Write-Host "[ERROR] No usable baseline package found under $BaselineRoot" -ForegroundColor Red
+        exit 1
+    }
+    if ($Baseline) {
+        $validBl = @($validBl | Where-Object { $_.Name -eq $Baseline })
+        if ($validBl.Count -eq 0) {
+            Write-Host "[ERROR] Baseline package '$Baseline' not found or not usable." -ForegroundColor Red
+            exit 1
+        }
+    }
+
+    $ExportDir = Get-ExportDir
+    New-Item -ItemType Directory -Path $ExportDir -Force | Out-Null
+
+    Write-Host "======================================================================"
+    Write-Host " EXPORT ALL - reference baseline only (GPOs + deltas)"
+    Write-Host " Local policy is NOT read and NOT changed."
+    Write-Host "======================================================================"
+    Write-Host ("  output folder = {0}" -f $ExportDir)
+    if ($Baseline) { Write-Host ("  filter        = baseline '{0}'" -f $Baseline) }
+    if ($Mode)     { Write-Host ("  filter        = mode '{0}'" -f $Mode) }
+
+    $tried   = 0
+    $written = New-Object System.Collections.Generic.List[string]
+    $failed  = New-Object System.Collections.Generic.List[string]
+
+    foreach ($bl in $validBl) {
+        foreach ($m in @($bl.Modes.Keys)) {
+            if ($Mode -and $m -ne $Mode) { continue }
+            $tried++
+
+            $split = Split-GposByExclude -Gpos @($bl.Modes[$m]) -Keywords $Exclude
+            if ($split.Gpos.Count -eq 0) {
+                Write-Host ("  [SKIP] {0} / {1}: no GPO left after -Exclude" -f $bl.Name, $m) -ForegroundColor Yellow
+                $failed.Add(('{0} / {1} (no GPO left after -Exclude)' -f $bl.Name, $m))
+                continue
+            }
+            $deltas = @(Get-DeltaFiles $bl $m)
+
+            Write-Host ""
+            Write-Host ("---- {0} / {1}  ({2} GPO, {3} delta) ----" -f `
+                $bl.Name, $m, $split.Gpos.Count, $deltas.Count) -ForegroundColor Cyan
+            foreach ($n in $split.Excluded) { Write-Host ("       (excluded) {0}" -f $n) -ForegroundColor DarkGray }
+
+            $r = Write-ReferenceExport -Bl $bl -ModeKey $m -Gpos $split.Gpos -Deltas $deltas `
+                     -ExcludedNames $split.Excluded -Dir $ExportDir
+            if ($r.Ok) { $written.Add([IO.Path]::GetFileName($r.OutFile)) }
+            else       { $failed.Add(('{0} / {1}' -f $bl.Name, $m)) }
+        }
+    }
+
+    if ($tried -eq 0) {
+        Write-Host ""
+        Write-Host "[ERROR] No package/mode combination matched the given filters." -ForegroundColor Red
+        Write-Host "        Run with -List to see the available packages and modes." -ForegroundColor Red
+        exit 1
+    }
+
+    Write-Host ""
+    Write-Host "======================================================================"
+    Write-Host (" DONE - exported {0} of {1} reference file(s)" -f $written.Count, $tried)
+    Write-Host "======================================================================"
+    foreach ($f in $written) { Write-Host ("  " + $f) }
+    if ($failed.Count -gt 0) {
+        Write-Host "[WARNING] No reference built for:" -ForegroundColor Yellow
+        foreach ($f in $failed) { Write-Host "    - $f" -ForegroundColor Yellow }
+    }
+    foreach ($p in @(Get-IgnoredDeltaPaths $Baselines)) {
+        Write-Host "[WARNING] Never applied (check folder name): $p" -ForegroundColor Yellow
+    }
+    Write-Host ("  -> output folder: {0}" -f $ExportDir)
+    Write-Host "Compare: open Policy Analyzer -> Add *.PolicyRules -> View/Compare."
+    Write-Host "======================================================================"
+    if ($failed.Count -gt 0) { exit 1 }
+    exit 0
 }
 
 # ============================================================
@@ -1074,10 +1260,16 @@ if ($Recheck) {
 
     Write-Host "==> Recheck mode, reusing result folder: $dirName" -ForegroundColor Green
 } else {
-    Write-Host "==== AUDIT IDENTIFICATION ====" -ForegroundColor Cyan
-    $EmpCode  = Read-NonEmpty  "Enter employee ID"
-    $DeviceIp = Read-IPAddress "Enter device IP address"
     $Hostname = $env:COMPUTERNAME
+    if ($Export) {
+        # -Export khong gan voi may nao -> khong hoi ma nhan vien / IP
+        $EmpCode = '(export)'
+        $DeviceIp = '(export)'
+    } else {
+        Write-Host "==== AUDIT IDENTIFICATION ====" -ForegroundColor Cyan
+        $EmpCode  = Read-NonEmpty  "Enter employee ID"
+        $DeviceIp = Read-IPAddress "Enter device IP address"
+    }
     Write-Host ""
 
     # ---------- chon goi baseline ----------
@@ -1162,17 +1354,21 @@ if ($Recheck) {
     $SelDeltas = @(Get-DeltaFiles $SelBl $ModeKey)
 
     # ---------- canh bao lech giua lua chon va may ----------
-    $score = Get-OsMatchScore $SelBl $Machine
-    if ($score -eq 0) {
-        $warnings.Add(("Package '{0}' does not appear to target this OS ({1})." -f $SelBl.Name, $Machine.Caption))
-    } elseif ($score -eq 1) {
-        $warnings.Add(("Package '{0}' targets another version than this OS ({1})." -f $SelBl.Name, $Machine.Full))
+    # -Export khong ap gi len may nay: xuat baseline cho OS/role khac la hop le
+    # (vi du xuat server-dc tu mot may Windows 11) -> bo cac canh bao theo may.
+    if (-not $Export) {
+        $score = Get-OsMatchScore $SelBl $Machine
+        if ($score -eq 0) {
+            $warnings.Add(("Package '{0}' does not appear to target this OS ({1})." -f $SelBl.Name, $Machine.Caption))
+        } elseif ($score -eq 1) {
+            $warnings.Add(("Package '{0}' targets another version than this OS ({1})." -f $SelBl.Name, $Machine.Full))
+        }
+        if ($Machine.SuggestedMode -and $ModeKey -ne $Machine.SuggestedMode) {
+            $warnings.Add(("Selected mode '{0}' differs from this machine's role ({1} -> '{2}')." -f $ModeKey, $Machine.RoleText, $Machine.SuggestedMode))
+        }
+        if ($ModeKey -like 'server-*' -and -not $Machine.IsServer) { $warnings.Add('Server mode selected on a client OS.') }
+        if ($ModeKey -like 'client-*' -and $Machine.IsServer)      { $warnings.Add('Client mode selected on a server OS.') }
     }
-    if ($Machine.SuggestedMode -and $ModeKey -ne $Machine.SuggestedMode) {
-        $warnings.Add(("Selected mode '{0}' differs from this machine's role ({1} -> '{2}')." -f $ModeKey, $Machine.RoleText, $Machine.SuggestedMode))
-    }
-    if ($ModeKey -like 'server-*' -and -not $Machine.IsServer) { $warnings.Add('Server mode selected on a client OS.') }
-    if ($ModeKey -like 'client-*' -and $Machine.IsServer)      { $warnings.Add('Client mode selected on a server OS.') }
     if ($ModeKey -like '*-nondomain' -and @($SelDeltas | Where-Object { $_.Layer -eq 'microsoft' }).Count -eq 0) {
         $warnings.Add("Non-domain mode but the package has no Scripts\ConfigFiles\DeltaForNonDomainJoined.* files.")
     }
@@ -1181,7 +1377,8 @@ if ($Recheck) {
     # ---------- ke hoach ----------
     Write-Host ""
     Write-Host "======================================================================"
-    Write-Host " PLAN"
+    if ($Export) { Write-Host " PLAN (export only - local policy is NOT read and NOT changed)" }
+    else         { Write-Host " PLAN" }
     Write-Host "======================================================================"
     Write-Host ("  baseline    = {0}  (modes {1})" -f $SelBl.Name, $SelBl.Source)
     Write-Host ("  mode        = {0} - {1}" -f $ModeKey, $ModeLabels[$ModeKey])
@@ -1192,11 +1389,41 @@ if ($Recheck) {
     foreach ($d in $SelDeltas) { Write-Host ("      [{0}] {1}" -f $d.Layer, $d.Display) }
     foreach ($w in $warnings) { Write-Host "  [WARNING] $w" -ForegroundColor Yellow }
     Write-Host ""
-    if ($warnings.Count -gt 0) {
+    # -Export khong thay doi gi tren may -> khong can hoi xac nhan
+    if (-not $Export -and $warnings.Count -gt 0) {
         if (-not (Read-YesNo "There are warnings above. Continue anyway?")) {
             Write-Host "==> Aborted, nothing was changed." -ForegroundColor DarkGray
             exit 1
         }
+    }
+
+    # ---------- -Export: ghi baseline tham chieu roi THOAT ----------
+    # Khong tao folder audit_*, khong chup snapshot, khong script check,
+    # khong remediate. Chi 2 file trong exports\.
+    if ($Export) {
+        $ExportDir = Get-ExportDir
+        New-Item -ItemType Directory -Path $ExportDir -Force | Out-Null
+        Write-Host "======================================================================"
+        Write-Host " EXPORT - reference baseline only (GPOs + deltas)"
+        Write-Host "======================================================================"
+        Write-Host ("  output folder = {0}" -f $ExportDir)
+        Write-Host ""
+        $r = Write-ReferenceExport -Bl $SelBl -ModeKey $ModeKey -Gpos $SelGpos -Deltas $SelDeltas `
+                 -ExcludedNames $ExcludedNames -Dir $ExportDir
+        Write-Host ""
+        Write-Host "======================================================================"
+        if ($r.Ok) {
+            Write-Host " DONE"
+        } else {
+            Write-Host " DONE - with errors, see the delta report" -ForegroundColor Yellow
+        }
+        Write-Host "======================================================================"
+        Write-Host ("  " + [IO.Path]::GetFileName($r.OutFile))
+        Write-Host ("  " + [IO.Path]::GetFileName($r.ReportFile))
+        Write-Host ("  -> output folder: {0}" -f $ExportDir)
+        Write-Host "Compare: open Policy Analyzer -> Add *.PolicyRules -> View/Compare."
+        Write-Host "======================================================================"
+        if ($r.Ok) { exit 0 } else { exit 1 }
     }
 
     $SelBaselineText = $SelBl.Name

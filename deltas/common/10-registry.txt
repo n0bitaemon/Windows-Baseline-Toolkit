@@ -1,0 +1,22 @@
+; ----------------------------------------------------------------------
+; Delta chung (deltas\common) - ap cho MOI goi baseline va MOI mode
+; (client-domain, client-nondomain, server-member, server-nondomain, server-dc).
+; LGPO text -> ap bang LGPO /t sau cac GPO cua Microsoft.
+; ----------------------------------------------------------------------
+
+; [COMMON-01] Device Installation Restrictions:
+;   "Prevent installation of devices not described by other policy settings" = Enabled
+;   Computer Config > Administrative Templates > System > Device Installation >
+;   Device Installation Restrictions. Baseline cua Microsoft khong cau hinh (NEW).
+Computer
+Software\Policies\Microsoft\Windows\DeviceInstall\Restrictions
+DenyUnspecified
+DWORD:1
+
+; [COMMON-02] Device Installation Restrictions:
+;   "Prevent installation of removable devices" = Enabled
+;   Cung nhanh chinh sach tren. Baseline cua Microsoft khong cau hinh (NEW).
+Computer
+Software\Policies\Microsoft\Windows\DeviceInstall\Restrictions
+DenyRemovableDevices
+DWORD:1

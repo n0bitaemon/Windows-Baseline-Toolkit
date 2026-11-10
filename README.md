@@ -91,6 +91,8 @@ Cuối file có phần **TỔNG KẾT** (`SUMMARY`) đếm số lượng từng 
 .\ApplyBaselinev2.ps1 -List          # xem gói / mode / GPO / delta mà script nhận ra (không thay đổi gì, không cần admin)
 .\ApplyBaselinev2.ps1                # audit lần đầu
 .\ApplyBaselinev2.ps1 --recheck      # xác nhận sau khi sửa
+.\ApplyBaselinev2.ps1 -Export        # CHỈ xuất baseline tham chiếu ra exports\ (không cần admin, không đổi máy)
+.\ApplyBaselinev2.ps1 -Export -All   # xuất mọi tổ hợp gói x mode trong 1 lần chạy
 # Chạy không cần menu:
 .\ApplyBaselinev2.ps1 -Baseline "Windows Server-2022-Security-Baseline" -Mode server-nondomain -Exclude 'Credential Guard'
 ```
@@ -112,6 +114,28 @@ Kết quả trùng với `Baseline-LocalInstall.ps1` của Microsoft. Script t�
 **Delta.** Các cấu hình khác baseline đặt trong `deltas\` (xem [deltas/README.md](deltas/README.md)). Script áp chúng **sau** GPO của Microsoft. Với mode `*-nondomain`, script tự áp thêm `DeltaForNonDomainJoined` có sẵn trong gói Microsoft. Khi có baseline mới: chép gói vào `baseline_template\`, chạy `-List`, rồi audit như bình thường. Delta cũ được dùng tiếp.
 
 **Remediate.** Tương tự script của Microsoft: `LGPO /e …` (client side extensions) → `LGPO /g` từng GPO → các delta (`/t`, `/s`, `/a`) → `gpupdate /force`. Trên **domain controller** script không remediate (Microsoft cũng chặn việc này). DC cần được import GPO qua AD.
+
+### Chế độ `-Export` — chỉ xuất baseline tham chiếu
+
+`-Export` chỉ gộp **GPO của Microsoft + delta** thành một file `.PolicyRules` rồi dừng. Không hỏi mã nhân viên / IP, không tạo folder `audit_*`, không chụp snapshot, không chạy script check, **không remediate**.
+
+```powershell
+.\ApplyBaselinev2.ps1 -Export                                              # chọn gói + mode qua menu
+.\ApplyBaselinev2.ps1 -Export -All                                         # tất cả tổ hợp
+.\ApplyBaselinev2.ps1 -Export -All -Baseline WindowsServer2022 -Mode server-dc   # 1 file, không hỏi gì
+.\ApplyBaselinev2.ps1 -Export -All -OutDir D:\refs                         # đổi thư mục đích
+```
+
+Kết quả trong `exports\` (đặt tên theo gói + mode, **không có timestamp** → chạy lại là ghi đè, dễ `diff`):
+
+| File | Nội dung |
+|---|---|
+| `<gói>_<mode>.PolicyRules` | baseline tham chiếu, mở bằng Policy Analyzer |
+| `<gói>_<mode>_delta_report.txt` | từng mục delta với trạng thái `OVERRIDE` / `REMOVE` / `NEW` / `REDUNDANT` / `ERROR` |
+
+Vì chỉ đọc file trong `baseline_template\` và `deltas\`, chế độ này **không cần quyền Administrator** và **không cần `LGPO.exe`** (chỉ cần `GPO2PolicyRules.exe`). Do đó xuất được baseline cho OS/vai trò **khác** máy đang chạy — ví dụ xuất `server-dc` từ một máy Windows 11 — nên các cảnh báo lệch OS/vai trò bị bỏ qua.
+
+> Thư mục `exports\` đang bị `.gitignore` bỏ qua. Thêm dòng `!/exports/` nếu muốn commit các file tham chiếu để theo dõi thay đổi qua git.
 
 **File kết quả thêm so với bản cũ** (chỉ tạo ở lần chạy đầu):
 

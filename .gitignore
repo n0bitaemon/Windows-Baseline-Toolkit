@@ -7,7 +7,9 @@
 !/List-BaselineGPOs.ps1
 !/README.md
 !/baseline_template/
+!/baseline_docs/
 !/deltas/
+!/scripts/
 !/LGPO/
 !/PolicyAnalyzer/
 !/SetObjectSecurity/
